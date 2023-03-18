@@ -33,6 +33,9 @@ import random
 import pandas as pd
 import util as ut
 
+from RTLearner import RTLearner
+from BagLearner import BagLearner
+from indicators import sma, ema, macd, bollinger_band_percentage, rate_of_change
 
 class StrategyLearner(object):
     """
@@ -54,6 +57,9 @@ class StrategyLearner(object):
         self.verbose = verbose
         self.impact = impact
         self.commission = commission
+
+        self.learner = BagLearner(learner=RTLearner, kwargs={'leaf_size': 5},
+                                  bags=20)
 
     # this method should create a QLearner, and train it for trading
     def add_evidence(
@@ -77,7 +83,7 @@ class StrategyLearner(object):
         """
 
         # add your code to do learning here
-        
+
         # example usage of the old backward compatible util function
         syms = [symbol]
         dates = pd.date_range(sd, ed)
