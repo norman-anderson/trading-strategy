@@ -1,5 +1,6 @@
 import pandas as pd
 
+
 def author():
     return "nanderson83"
 
@@ -14,7 +15,8 @@ def sma(df_prices):
 
 
 def ema(df_prices):
-    df_prices /= df_prices[0]
+    print(df_prices.iloc[0, 0])
+    df_prices /= df_prices.iloc[0, 0]
     df_indicators = pd.DataFrame(index=df_prices.index)
     df_indicators['price'] = df_prices
     df_indicators['EMA 20 days'] = df_prices.ewm(span=20).mean()
@@ -53,4 +55,3 @@ def bollinger_band_percentage(df_prices):
 def rate_of_change(df_prices, window=14):
     roc = (df_prices - df_prices.shift(window)) / df_prices.shift(window) * 100
     return roc
-
