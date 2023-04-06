@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import statistics as stats
 
 
 class RTLearner(object):
@@ -27,7 +28,7 @@ class RTLearner(object):
 
         # base cases
         if data_x.shape[0] <= self.leaf_size:
-            return np.array([-1, np.median(data_y), np.nan, np.nan])
+            return np.array([-1, stats.mode(data_y), np.nan, np.nan])
         if np.all(data_y == data_y[0]): # if all data_y are the same
             return np.array([-1, data_y[0], np.nan, np.nan])
 
@@ -37,7 +38,7 @@ class RTLearner(object):
 
         # edge case:
         if split_val == max(data_x[:, feature_i]):
-            return np.array([-1, np.median(data_y), np.nan, np.nan])
+            return np.array([-1, stats.mode(data_y), np.nan, np.nan])
 
         left_tree = self.build_tree(data_x[data_x[:, feature_i] <= split_val],
                                     data_y[data_x[:, feature_i] <= split_val])

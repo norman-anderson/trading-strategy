@@ -1,5 +1,9 @@
+import datetime as dt
+import numpy as np
 import pandas as pd
-
+from util import get_data, plot_data
+from marketsimcode import compute_portvals
+import matplotlib.pyplot as plt
 
 def author():
     return "nanderson83"
@@ -15,13 +19,24 @@ def sma(df_prices):
 
 
 def ema(df_prices):
-    print(df_prices.iloc[0, 0])
     df_prices /= df_prices.iloc[0, 0]
     df_indicators = pd.DataFrame(index=df_prices.index)
-    df_indicators['price'] = df_prices
+    df_indicators['signal'] = 0
     df_indicators['EMA 20 days'] = df_prices.ewm(span=20).mean()
     df_indicators['EMA 50 days'] = df_prices.ewm(span=50).mean()
+    previous = df_prices.index[0]
+    for i in df_prices.index[1:]:
+        # print(df_indicators.loc[previous, 'EMA 20 days'], df_indicators.loc[previous, 'EMA 50 days'])
+        # print(df_indicators.loc[i, 'EMA 20 days'], df_indicators.loc[i, 'EMA 50 days'])
+        # print("----")
+        if df_indicators.loc[previous, 'EMA 20 days'] < df_indicators.loc[previous, 'EMA 50 days'] and df_indicators.loc[i, 'EMA 20 days'] >= df_indicators.loc[i, 'EMA 50 days']:
+            df_indicators.loc[i, 'signal'] = 1
+        elif df_indicators.loc[previous, 'EMA 20 days'] > df_indicators.loc[previous, 'EMA 50 days'] and df_indicators.loc[i, 'EMA 20 days'] <= df_indicators.loc[i, 'EMA 50 days']:
+            df_indicators.loc[i, 'signal'] = -1
+        previous = i
     df_indicators.dropna()
+    df_indicators.drop(['EMA 20 days'], axis=1, inplace=True)
+    df_indicators.drop(['EMA 50 days'], axis=1, inplace=True)
     return df_indicators
 
 
@@ -30,9 +45,12 @@ def macd(df_prices):
     macd = ema_12 - ema_26
     macd_signal = macd.ewm(span=9).mean()
     df_indicators = pd.DataFrame(index=df_prices.index)
-    #df_indicators['price'] = df_prices
-    df_indicators['MACD'] = macd
-    df_indicators['MACD Signal'] = macd_signal
+    df_indicators['signal'] = 0
+    for i in df_prices.index:
+        if macd.loc[i, 'JPM'] > macd_signal.loc[i, 'JPM']:
+            df_indicators.loc[i, 'signal'] = 1
+        elif macd.loc[i, 'JPM'] < macd_signal.loc[i, 'JPM']:
+            df_indicators.loc[i, 'signal'] = -1
     return df_indicators
 
 
@@ -55,3 +73,4 @@ def bollinger_band_percentage(df_prices):
 def rate_of_change(df_prices, window=14):
     roc = (df_prices - df_prices.shift(window)) / df_prices.shift(window) * 100
     return roc
+
