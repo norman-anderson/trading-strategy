@@ -72,5 +72,15 @@ def bollinger_band_percentage(df_prices):
 
 def rate_of_change(df_prices, window=14):
     roc = (df_prices - df_prices.shift(window)) / df_prices.shift(window) * 100
+    roc.fillna(method="bfill", inplace=True)
+    roc['signal'] = 0
+    previous = roc.index[0]
+    for i in roc.index[1:]:
+        if roc.loc[i, 'JPM'] > roc.loc[previous, 'JPM']:
+            roc.loc[i, 'signal'] = 1
+        elif roc.loc[i, 'JPM'] < roc.loc[previous, 'JPM']:
+            roc.loc[i, 'signal'] = -1
+        previous = i
+    roc.drop(['JPM'], axis=1, inplace=True)
     return roc
 
