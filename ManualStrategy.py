@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from marketsimcode import compute_portvals
 import matplotlib.pyplot as plt
-from indicators import ema, macd, rate_of_change
+from indicators import ema, macd, rate_of_change, sma
 
 
 def author():
@@ -21,9 +21,10 @@ class ManualStrategy:
         df.drop(['SPY'], axis=1, inplace=True)
 
         # indicators
+        df_sma = sma(df)
         df_ema = ema(df)
         df_roc = rate_of_change(df)
-        df_macd = macd(df)
+        df_macd = macd(df, symbol)
 
         portfolio = df.copy()
         portfolio.iloc[:, :] = np.nan
@@ -31,12 +32,13 @@ class ManualStrategy:
         for date in portfolio.index:
             #print(date)
             vote = df_macd.loc[date, 'signal'] + df_ema.loc[date, 'signal'] + df_roc.loc[date, 'signal']
-            if vote >= 2:
+            if vote >= 3:
                 action = 1000 - current_position
-            elif vote <= -2:
+            elif vote <= -3:
                 action = -1000 - current_position
             else:
                 action = -current_position
+            print(action)
             current_position += action
             portfolio.loc[date, 'JPM'] = action
         return portfolio

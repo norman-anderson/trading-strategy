@@ -37,6 +37,7 @@ from RTLearner import RTLearner
 from BagLearner import BagLearner
 from indicators import sma, ema, macd, bollinger_band_percentage, rate_of_change
 
+
 class StrategyLearner(object):
     """
     A strategy learner that can learn a trading policy using the same indicators used in ManualStrategy.
@@ -60,6 +61,8 @@ class StrategyLearner(object):
 
         self.learner = BagLearner(learner=RTLearner, kwargs={'leaf_size': 5},
                                   bags=20)
+        random.seed(903863313)
+        self.lookback = 14
 
     # this method should create a QLearner, and train it for trading
     def add_evidence(
@@ -89,7 +92,7 @@ class StrategyLearner(object):
         dates = pd.date_range(sd, ed)
         prices_all = ut.get_data(syms, dates)  # automatically adds SPY
         prices = prices_all[syms]  # only portfolio symbols
-        prices_SPY = prices_all["SPY"]  # only SPY, for comparison later
+
         if self.verbose:
             print(prices)
 
@@ -101,6 +104,26 @@ class StrategyLearner(object):
         volume_SPY = volume_all["SPY"]  # only SPY, for comparison later
         if self.verbose:
             print(volume)
+
+        s, m, r = sma(prices), macd(prices, symbol), rate_of_change(prices, symbol)
+        ind = pd.concat((s, m, r), axis=1)
+        x_train = ind.values
+        y_train = (prices.shift(-self.lookback) / prices) - 1
+        y_train[y_train > 0] = prices.shift(-self.lookback) / (prices * (1.0 + 2 * self.impact)) - 1.0
+        y_train[y_train < 0] = prices.shift(-self.lookback) / (prices * (1.0 - 2 * self.impact)) - 1.0
+        y_train = y_train.values
+
+        buy, sell = 0.05, -0.05
+        for i in range(len(y_train)):
+            if y_train[i] > 1.08 + self.impact:
+                y_train[i] = 1
+            elif y_train[i] < 0.92 - self.impact:
+                y_train[i] = -1
+            else:
+                y_train[i] = 0
+
+        self.learner.add_evidence(x_train, y_train)
+
 
     # this method should use the existing policy and test it against new data
     def testPolicy(
@@ -128,27 +151,16 @@ class StrategyLearner(object):
         :rtype: pandas.DataFrame
         """
 
-        # here we build a fake set of trades
         # your code should return the same sort of data
+        syms = [symbol]
         dates = pd.date_range(sd, ed)
-        prices_all = ut.get_data([symbol], dates)  # automatically adds SPY
-        trades = prices_all[[symbol,]]  # only portfolio symbols
-        trades_SPY = prices_all["SPY"]  # only SPY, for comparison later
-        trades.values[:, :] = 0  # set them all to nothing
-        trades.values[0, :] = 1000  # add a BUY at the start
-        trades.values[40, :] = -1000  # add a SELL
-        trades.values[41, :] = 1000  # add a BUY
-        trades.values[60, :] = -2000  # go short from long
-        trades.values[61, :] = 2000  # go long from short
-        trades.values[-1, :] = -1000  # exit on the last day
-        if self.verbose:
-            print(type(trades))  # it better be a DataFrame!
-        if self.verbose:
-            print(trades)
-        if self.verbose:
-            print(prices_all)
-        return trades
+        prices_all = ut.get_data(syms, dates)  # automatically adds SPY
+        prices = prices_all[syms]  # only portfolio symbols
+        
+        #return trades
 
 
 if __name__ == "__main__":
-    print("One does not simply think up a strategy")
+    #print("One does not simply think up a strategy")
+    sl = StrategyLearner()
+    sl.add_evidence()

@@ -10,18 +10,28 @@ def author():
 
 
 def sma(df_prices):
-    df_prices /= df_prices[0]
+    df_prices /= df_prices.iloc[0, 0]
     df_indicators = pd.DataFrame(index=df_prices.index)
-    df_indicators['price'] = df_prices
-    df_indicators['SMA'] = df_prices.rolling(window=20).mean()
-    df_indicators.dropna()
+    #df_indicators['price'] = df_prices
+    df_indicators['SMA'] = df_prices.rolling(window=14).mean()
+    df_indicators.fillna(method="bfill", inplace=True)
+    df_indicators['signal'] = 0
+    previous = df_prices.index[0]
+    for i in df_prices.index[1:]:
+        if df_indicators.loc[previous, 'SMA'] < df_indicators.loc[i, 'SMA']:
+            df_indicators.loc[i, 'signal'] = 1
+        elif df_indicators.loc[previous, 'SMA'] > df_indicators.loc[i, 'SMA']:
+            df_indicators.loc[i, 'signal'] = -1
+        previous = i
+    df_indicators.drop(['SMA'], axis=1, inplace=True)
+    df_indicators.rename(columns={'signal': 'SMA'}, inplace=True)
     return df_indicators
 
 
 def ema(df_prices):
     df_prices /= df_prices.iloc[0, 0]
     df_indicators = pd.DataFrame(index=df_prices.index)
-    df_indicators['signal'] = 0
+    df_indicators['EMA'] = 0
     df_indicators['EMA 20 days'] = df_prices.ewm(span=20).mean()
     df_indicators['EMA 50 days'] = df_prices.ewm(span=50).mean()
     previous = df_prices.index[0]
@@ -30,9 +40,9 @@ def ema(df_prices):
         # print(df_indicators.loc[i, 'EMA 20 days'], df_indicators.loc[i, 'EMA 50 days'])
         # print("----")
         if df_indicators.loc[previous, 'EMA 20 days'] < df_indicators.loc[previous, 'EMA 50 days'] and df_indicators.loc[i, 'EMA 20 days'] >= df_indicators.loc[i, 'EMA 50 days']:
-            df_indicators.loc[i, 'signal'] = 1
+            df_indicators.loc[i, 'EMA'] = 1
         elif df_indicators.loc[previous, 'EMA 20 days'] > df_indicators.loc[previous, 'EMA 50 days'] and df_indicators.loc[i, 'EMA 20 days'] <= df_indicators.loc[i, 'EMA 50 days']:
-            df_indicators.loc[i, 'signal'] = -1
+            df_indicators.loc[i, 'EMA'] = -1
         previous = i
     df_indicators.dropna()
     df_indicators.drop(['EMA 20 days'], axis=1, inplace=True)
@@ -40,17 +50,17 @@ def ema(df_prices):
     return df_indicators
 
 
-def macd(df_prices):
+def macd(df_prices, symbol):
     ema_12, ema_26 = df_prices.ewm(span=12).mean(), df_prices.ewm(span=26).mean()
     macd = ema_12 - ema_26
     macd_signal = macd.ewm(span=9).mean()
     df_indicators = pd.DataFrame(index=df_prices.index)
-    df_indicators['signal'] = 0
+    df_indicators['MACD'] = 1
     for i in df_prices.index:
-        if macd.loc[i, 'JPM'] > macd_signal.loc[i, 'JPM']:
-            df_indicators.loc[i, 'signal'] = 1
-        elif macd.loc[i, 'JPM'] < macd_signal.loc[i, 'JPM']:
-            df_indicators.loc[i, 'signal'] = -1
+        if macd.loc[i, symbol] > macd_signal.loc[i, symbol]:
+            df_indicators.loc[i, 'MACD'] = 2
+        elif macd.loc[i, symbol] < macd_signal.loc[i, symbol]:
+            df_indicators.loc[i, 'MACD'] = -10
     return df_indicators
 
 
@@ -70,17 +80,17 @@ def bollinger_band_percentage(df_prices):
     return df_indicators, bollinger_band
 
 
-def rate_of_change(df_prices, window=14):
+def rate_of_change(df_prices, symbol, window=14):
     roc = (df_prices - df_prices.shift(window)) / df_prices.shift(window) * 100
     roc.fillna(method="bfill", inplace=True)
-    roc['signal'] = 0
+    roc['ROC'] = 0
     previous = roc.index[0]
     for i in roc.index[1:]:
-        if roc.loc[i, 'JPM'] > roc.loc[previous, 'JPM']:
-            roc.loc[i, 'signal'] = 1
-        elif roc.loc[i, 'JPM'] < roc.loc[previous, 'JPM']:
-            roc.loc[i, 'signal'] = -1
+        if roc.loc[i, symbol] > roc.loc[previous, symbol]:
+            roc.loc[i, 'ROC'] = 1
+        elif roc.loc[i, symbol] < roc.loc[previous, symbol]:
+            roc.loc[i, 'ROC'] = -1
         previous = i
-    roc.drop(['JPM'], axis=1, inplace=True)
+    roc.drop([symbol], axis=1, inplace=True)
     return roc
 
