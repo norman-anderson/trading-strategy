@@ -156,9 +156,22 @@ class StrategyLearner(object):
         dates = pd.date_range(sd, ed)
         prices_all = ut.get_data(syms, dates)  # automatically adds SPY
         prices = prices_all[syms]  # only portfolio symbols
-        
-        #return trades
 
+        s, m, r = sma(prices), macd(prices, symbol), rate_of_change(prices, symbol)
+        ind = pd.concat((s, m, r), axis=1)
+        x_test = ind.values
+        y_test = self.learner.query(x_test)
+        trades = pd.DataFrame(0, columns=prices.columns, index=prices.index)
+        shares = 0
+        for i in range(len(trades)):
+            if y_test[i] == 1:
+                trades[symbol].iloc[i] = 1000 - shares
+                shares = 1000
+            elif y_test[i] == -1:
+                trades[symbol].iloc[i] = - shares - 1000
+                shares = -1000
+
+        return trades
 
 if __name__ == "__main__":
     #print("One does not simply think up a strategy")
