@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from marketsimcode import compute_portvals
 import matplotlib.pyplot as plt
-from indicators import ema, macd, rate_of_change, sma
+from indicators import sma, rate_of_change, bollinger_band_percentage
 
 
 def author():
@@ -18,29 +18,29 @@ class ManualStrategy:
         df = get_data([symbol], pd.date_range(sd, ed))
         df.fillna(method="ffill", inplace=True)
         df.fillna(method="bfill", inplace=True)
-        df.drop(['SPY'], axis=1, inplace=True)
+        prices = df[symbol]
+        prices_normed = prices / prices.iloc[0]
 
         # indicators
-        df_sma = sma(df)
-        df_ema = ema(df)
-        df_roc = rate_of_change(df)
-        df_macd = macd(df, symbol)
+        s, s_ratio = sma(prices_normed)
+        upper_band, lower_band, bbp = bollinger_band_percentage(prices_normed)
+        roc = rate_of_change(prices_normed)
 
-        portfolio = df.copy()
+        portfolio = pd.DataFrame(index=prices_normed.index, columns=['JPM'])
         portfolio.iloc[:, :] = np.nan
         current_position = 0
-        for date in portfolio.index:
-            #print(date)
-            vote = df_macd.loc[date, 'signal'] + df_ema.loc[date, 'signal'] + df_roc.loc[date, 'signal']
-            if vote >= 3:
+        for i in range(portfolio.shape[0] - 1):
+            if current_position <= 0 and (s_ratio.iloc[i] < 0.6 or bbp.iloc[i] < 0.2 or roc.iloc[i] < -0.2):
                 action = 1000 - current_position
-            elif vote <= -3:
+                portfolio.iloc[i, 0] = action
+                current_position += action
+
+            elif current_position >= 0 and (s_ratio.iloc[i] > 1.4 or bbp.iloc[i] > 0.8 or roc.iloc[i] > 0.2):
                 action = -1000 - current_position
-            else:
-                action = -current_position
-            print(action)
-            current_position += action
-            portfolio.loc[date, 'JPM'] = action
+                portfolio.iloc[i, 0] = action
+                current_position += action
+
+        portfolio.dropna(inplace=True)
         return portfolio
 
     def benchmark(self, symbol="JPM",
@@ -74,7 +74,7 @@ def stats(manual, benchmark):
     benchmark_mean = benchmark_daily_return.mean()
     benchmark_stdev = benchmark_daily_return.std()
 
-    print("Theoretically Optimal Strategy")
+    print("Manual Strategy")
     print("Cumulative return: {:6f}".format(manual_cr))
     print("Mean of daily returns: {:6f}".format(manual_mean))
     print("Stdev of daily returns: {:6f}".format(manual_stdev))
@@ -83,6 +83,7 @@ def stats(manual, benchmark):
     print("Cumulative return: {:6f}".format(benchmark_cr))
     print("Mean of daily returns: {:6f}".format(benchmark_mean))
     print("Stdev of daily returns: {:6f}".format(benchmark_stdev))
+
 
 def chart(trades, manual, benchmark):
     long = []
@@ -128,18 +129,24 @@ def chart(trades, manual, benchmark):
 def report():
     # In Sample
     ms = ManualStrategy()
-    trades = ms.testPolicy()
+    is_trades = ms.testPolicy()
 
-    manual_portvals = compute_portvals(trades)
-    benchmark = ms.benchmark()
-    stats(manual_portvals, benchmark)
-    chart(trades, manual_portvals, benchmark)
-
-
+    is_manual_portvals = compute_portvals(is_trades)
+    is_benchmark = ms.benchmark()
+    stats(is_manual_portvals, is_benchmark)
+    chart(is_trades, is_manual_portvals, is_benchmark)
 
     # Out of Sample
+    os_trades = ms.testPolicy(sd=dt.datetime(2010, 1, 1),
+                           ed=dt.datetime(2011, 12, 31))
+    os_manual_portvals = compute_portvals(os_trades)
+    os_benchmark=ms.benchmark(sd=dt.datetime(2010, 1, 1),
+                           ed=dt.datetime(2011, 12, 31))
+    stats(os_manual_portvals, os_benchmark)
+    chart(os_trades, os_manual_portvals, os_benchmark)
 
 
 if __name__ == "__main__":
     report()
+
 

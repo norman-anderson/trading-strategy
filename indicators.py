@@ -10,87 +10,28 @@ def author():
 
 
 def sma(df_prices):
-    df_prices /= df_prices.iloc[0, 0]
-    df_indicators = pd.DataFrame(index=df_prices.index)
-    #df_indicators['price'] = df_prices
-    df_indicators['SMA'] = df_prices.rolling(window=14).mean()
-    df_indicators.fillna(method="bfill", inplace=True)
-    df_indicators['signal'] = 0
-    previous = df_prices.index[0]
-    for i in df_prices.index[1:]:
-        if df_indicators.loc[previous, 'SMA'] < df_indicators.loc[i, 'SMA']:
-            df_indicators.loc[i, 'signal'] = 1
-        elif df_indicators.loc[previous, 'SMA'] > df_indicators.loc[i, 'SMA']:
-            df_indicators.loc[i, 'signal'] = -1
-        previous = i
-    df_indicators.drop(['SMA'], axis=1, inplace=True)
-    df_indicators.rename(columns={'signal': 'SMA'}, inplace=True)
-    return df_indicators
-
-
-def ema(df_prices):
-    df_prices /= df_prices.iloc[0, 0]
-    df_indicators = pd.DataFrame(index=df_prices.index)
-    df_indicators['EMA'] = 0
-    df_indicators['EMA 20 days'] = df_prices.ewm(span=20).mean()
-    df_indicators['EMA 50 days'] = df_prices.ewm(span=50).mean()
-    previous = df_prices.index[0]
-    for i in df_prices.index[1:]:
-        # print(df_indicators.loc[previous, 'EMA 20 days'], df_indicators.loc[previous, 'EMA 50 days'])
-        # print(df_indicators.loc[i, 'EMA 20 days'], df_indicators.loc[i, 'EMA 50 days'])
-        # print("----")
-        if df_indicators.loc[previous, 'EMA 20 days'] < df_indicators.loc[previous, 'EMA 50 days'] and df_indicators.loc[i, 'EMA 20 days'] >= df_indicators.loc[i, 'EMA 50 days']:
-            df_indicators.loc[i, 'EMA'] = 1
-        elif df_indicators.loc[previous, 'EMA 20 days'] > df_indicators.loc[previous, 'EMA 50 days'] and df_indicators.loc[i, 'EMA 20 days'] <= df_indicators.loc[i, 'EMA 50 days']:
-            df_indicators.loc[i, 'EMA'] = -1
-        previous = i
-    df_indicators.dropna()
-    df_indicators.drop(['EMA 20 days'], axis=1, inplace=True)
-    df_indicators.drop(['EMA 50 days'], axis=1, inplace=True)
-    return df_indicators
-
-
-def macd(df_prices, symbol):
-    ema_12, ema_26 = df_prices.ewm(span=12).mean(), df_prices.ewm(span=26).mean()
-    macd = ema_12 - ema_26
-    macd_signal = macd.ewm(span=9).mean()
-    df_indicators = pd.DataFrame(index=df_prices.index)
-    df_indicators['MACD'] = 1
-    for i in df_prices.index:
-        if macd.loc[i, symbol] > macd_signal.loc[i, symbol]:
-            df_indicators.loc[i, 'MACD'] = 2
-        elif macd.loc[i, symbol] < macd_signal.loc[i, symbol]:
-            df_indicators.loc[i, 'MACD'] = -10
-    return df_indicators
+    sma = df_prices.rolling(window=20).mean()
+    sma.fillna(method="bfill", inplace=True)
+    sma_ratio = df_prices/sma
+    return sma, sma_ratio
 
 
 def bollinger_band_percentage(df_prices):
-    rolling_mean = df_prices.rolling(window=10,center=False).mean()
+    rolling_mean = df_prices.rolling(window=20, center=False).mean()
+    rolling_mean.fillna(method="bfill", inplace=True)
     stdev = df_prices.rolling(window=10,center=False).std()
+    stdev.fillna(method="bfill", inplace=True)
     upper_band = rolling_mean + stdev * 2
     lower_band = rolling_mean - stdev * 2
-    df_indicators = pd.DataFrame(index=df_prices.index)
-    bollinger_band = pd.DataFrame(index=df_prices.index)
-    bollinger_band['Upper Band'] = upper_band
-    bollinger_band['Lower Band'] = lower_band
-    bollinger_band['Price'] = df_prices
 
-    bb_percentage = (df_prices - lower_band)/(upper_band - lower_band) * 100
-    df_indicators['BB Percentage'] = bb_percentage
-    return df_indicators, bollinger_band
+    bb_percentage = (df_prices - lower_band)/(upper_band - lower_band)
+
+    return upper_band, lower_band, bb_percentage
 
 
-def rate_of_change(df_prices, symbol, window=14):
-    roc = (df_prices - df_prices.shift(window)) / df_prices.shift(window) * 100
+def rate_of_change(df_prices, window=20):
+    roc = df_prices / df_prices.shift(window) - 1
     roc.fillna(method="bfill", inplace=True)
-    roc['ROC'] = 0
-    previous = roc.index[0]
-    for i in roc.index[1:]:
-        if roc.loc[i, symbol] > roc.loc[previous, symbol]:
-            roc.loc[i, 'ROC'] = 1
-        elif roc.loc[i, symbol] < roc.loc[previous, symbol]:
-            roc.loc[i, 'ROC'] = -1
-        previous = i
-    roc.drop([symbol], axis=1, inplace=True)
     return roc
+
 
