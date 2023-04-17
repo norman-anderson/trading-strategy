@@ -39,9 +39,9 @@ def experiment2():
     sl_portvals_1 = sl_portvals_1 / sl_portvals_1.iloc[0]
 
     plt.figure(figsize=(18, 9))
-    plt.plot(sl_portvals_05, 'Green', label='Impact Value = $0.00')
-    plt.plot(sl_portvals_0, 'Red', label='Impact Value = $0.005')
-    plt.plot(sl_portvals_1, 'Blue', label='Impact Value = $0.01')
+    plt.plot(sl_portvals_05, 'Green', label='Reinforcement Learner Strategy')
+    plt.plot(sl_portvals_0, 'Red', label='Manual Empirical-Based Strategy')
+    plt.plot(sl_portvals_1, 'Blue', label='Benchmark (Holding the stock only)')
     plt.title('Strategy Learner with Different Impact Values', fontsize=26)
     plt.legend(fontsize=20)
     plt.xlabel('Date', fontsize=20)
@@ -78,3 +78,6 @@ def stats(portvals):
     mean = daily_returns.mean()
     stdev = daily_returns.std()
     return cr, mean, stdev
+
+if __name__ == "__main__":
+    experiment2()
