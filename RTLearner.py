@@ -5,82 +5,70 @@ import statistics as stats
 
 class RTLearner(object):
     def __init__(self, leaf_size=1, verbose=False):
+        """
+        Constructor method
+        """
         self.leaf_size = leaf_size
         self.verbose = verbose
-        self.decision_tree = None
 
     def author(self):
         return "nanderson83"
 
     def add_evidence(self, data_x, data_y):
-        self.decision_tree = self.build_tree(data_x, data_y)
-        # edge case: if our tree is only a leaf, convert it to 2D array
-        if isinstance(self.decision_tree[0], int) \
-                or isinstance(self.decision_tree[0], float):
-            self.decision_tree = np.array([self.decision_tree])
-        if self.verbose:
-            print(self.decision_tree)
+        """
+        Add training data to learner
+        :param data_x: A set of feature values used to train the learner
+        :type data_x: numpy.ndarray
+        :param data_y: The value we are attempting to predict given the X data
+        :type data_y: numpy.ndarray
+        """
+        data = np.hstack((data_x, data_y.reshape(-1, 1)))
+        self.tree = self.build_tree(data)
 
-    def build_tree(self, data_x, data_y):
-        # convert data_x and data_y to astype(float) to be able to take median
-        data_x = data_x.astype(float)
-        data_y = data_y.astype(float)
-
-        # base cases
-        if data_x.shape[0] <= self.leaf_size:
-            return np.array([-1, stats.mode(data_y), np.nan, np.nan])
-        if np.all(data_y == data_y[0]): # if all data_y are the same
-            return np.array([-1, data_y[0], np.nan, np.nan])
-
-        feature_i = random.randrange(data_x.shape[1])
-        point1, point2 = random.sample(range(data_x.shape[0]), 2)
-        split_val = (data_x[point1][feature_i] + data_x[point2][feature_i]) / 2
-
-        # edge case:
-        if split_val == max(data_x[:, feature_i]):
-            return np.array([-1, stats.mode(data_y), np.nan, np.nan])
-
-        left_tree = self.build_tree(data_x[data_x[:, feature_i] <= split_val],
-                                    data_y[data_x[:, feature_i] <= split_val])
-        right_tree = self.build_tree(data_x[data_x[:, feature_i] > split_val],
-                                     data_y[data_x[:, feature_i] > split_val])
-
-        # assemble the root to have
-        # [best index, split value, relative left subtree, relative right subt.]
-        if left_tree.ndim == 1:
-            root = np.array([feature_i, split_val, 1, 2])
+    def build_tree(self, data):
+        # build and save the tree: X_train, Y_train
+        data_y = data[:, -1]
+        if data.shape[0] <= self.leaf_size or len(data.shape) == 1:  # only 1 row
+            return np.array([['leaf', np.mean(data_y), -1, -1]])
+        elif np.all(data_y == data[0, -1]):  # all elements in Y are same
+            # return [leaf,	data.y,	NA,	NA]
+            return np.array([['leaf', data[0, -1], -1, -1]])
         else:
-            root = np.array([feature_i, split_val, 1, left_tree.shape[0] + 1])
-        return np.row_stack((root, left_tree, right_tree))
+            # A	Cutler Decision Tree Algorithm:
+            # determine random feature 'i' to split on
+            best_i = random.randint(0, data.shape[1] - 2)
+            splitVal = np.median(data[:, best_i], axis=0)
+            if splitVal == max(data[:, best_i]):
+                return np.array([['leaf', np.mean(data_y), -1, -1]])
 
-    def query(self,points):
-        """
-        @summary: Estimate a set of test points given the model we built.
-        @param points: should be a numpy array with each row corresponding to a specific query.
-        @return: the estimated values according to the saved model.
-        """
-        result = np.array([])
-        for point in points:
-            # edge case: if our tree is a single leaf
-            if isinstance(self.decision_tree[0], int) \
-                    or isinstance(self.decision_tree[0],float):
-                result = np.append(result, self.decision_tree[1])
-                continue
+            leftTree = self.build_tree(data[data[:, best_i] <= splitVal])
+            rightTree = self.build_tree(data[data[:, best_i] > splitVal])
+            root = np.array([[best_i, splitVal, 1, leftTree.shape[0] + 1]])
+            decision_tree = np.vstack((np.vstack((root, leftTree)), rightTree))
+            return decision_tree
 
+    def query(self, points):
+        """
+        Estimate a set of test points given the tree we built.
+        :param points: A numpy array with each row corresponding to a specific query.
+        :type points: numpy.ndarray
+        :return: The predicted result of the input data according to the trained tree
+        :rtype: numpy.ndarray
+        """
+        # Given points as X_test, return results as Y_test
+        results = []
+        root = self.tree
+        for i in range(points.shape[0]):
             node = 0
-            feature = self.decision_tree[node][0]
-            while feature != -1:
-                split_val = self.decision_tree[node][1]
-                if point[int(float(feature))] <= float(split_val):
-                    # go to the left subtree
-                    node += 1
+            while root[node, 0] != 'leaf':
+                index = root[node, 0]
+                splitVal = root[node, 1]
+                if points[i, int(float(index))] <= float(splitVal):
+                    left = int(float(root[node, 2]))
+                    node = node + left
                 else:
-                    # go to the right subtree
-                    node += int(float(self.decision_tree[node][3]))
-                # update feature
-                feature = self.decision_tree[node][0]
-
-            # we have reached a leaf
-            value = self.decision_tree[node][1]
-            result = np.append(result, value)
-        return result
+                    right = int(float(root[node, 3]))
+                    node = node + right
+            result = root[node, 1]
+            results.append(float(result))
+        return np.array(results)

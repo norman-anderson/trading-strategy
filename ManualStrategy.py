@@ -1,10 +1,11 @@
+import indicators
 from util import get_data, plot_data
 import datetime as dt
 import numpy as np
 import pandas as pd
-from marketsimcode import compute_portvals
+import marketsimcode
 import matplotlib.pyplot as plt
-from indicators import sma, rate_of_change, bollinger_band_percentage
+import indicators
 
 
 def author():
@@ -22,20 +23,41 @@ class ManualStrategy:
         prices_normed = prices / prices.iloc[0]
 
         # indicators
-        s, s_ratio = sma(prices_normed)
-        upper_band, lower_band, bbp = bollinger_band_percentage(prices_normed)
-        roc = rate_of_change(prices_normed)
+        ema = indicators.ema(sd, ed, symbol)
+        ema = ema[symbol] / ema[symbol][0]  # normalize ema
+        macd, macd_signal = indicators.macd(sd, ed, symbol)
+        roc = indicators.roc(sd, ed, symbol)
+        # s, s_ratio = sma(prices_normed)
+        # upper_band, lower_band, bbp = bollinger_band_percentage(prices_normed)
+        # roc = rate_of_change(prices_normed)
 
         portfolio = pd.DataFrame(index=prices_normed.index, columns=['JPM'])
-        portfolio.iloc[:, :] = np.nan
+        portfolio.iloc[:, :] = 0
         current_position = 0
+        date = prices_normed.index
         for i in range(portfolio.shape[0] - 1):
-            if current_position <= 0 and (s_ratio.iloc[i] < 0.6 or bbp.iloc[i] < 0.2 or roc.iloc[i] < -0.2):
+            vote = 0
+            if ema.loc[date[i]] < prices_normed.loc[date[i]]:
+                vote += 1
+            elif ema.loc[date[i]] > prices_normed.loc[date[i]]:
+                vote -= 1
+
+            if macd.loc[date[i]][symbol] < macd_signal.loc[date[i]][symbol]:
+                vote += 2
+            elif macd.loc[date[i]][symbol] > macd_signal.loc[date[i]][symbol]:
+                vote -= 6
+
+            if roc.loc[date[i]][symbol] > 0:
+                vote += 1
+            else:
+                vote -= 1
+
+            #print(vote)
+            if vote >= 3:
                 action = 1000 - current_position
                 portfolio.iloc[i, 0] = action
                 current_position += action
-
-            elif current_position >= 0 and (s_ratio.iloc[i] > 1.4 or bbp.iloc[i] > 0.8 or roc.iloc[i] > 0.2):
+            elif vote <= -3:
                 action = -1000 - current_position
                 portfolio.iloc[i, 0] = action
                 current_position += action
@@ -47,14 +69,14 @@ class ManualStrategy:
                         sd=dt.datetime(2008, 1, 1),
                         ed=dt.datetime(2009, 12, 31), sv=100000):
         df_trades = self.testPolicy('JPM', sd, ed, sv)
-        ms_portval = compute_portvals(df_trades, start_val=sv, impact=0, commission=0)
+        ms_portval = marketsimcode.compute_portvals(df_trades, start_val=sv, impact=9.95, commission=0.005)
         ms_normed = ms_portval / ms_portval['Cash'][0]
 
         df_benchmark = df_trades.copy()
         df_benchmark.iloc[:] = 0
         df_benchmark.iloc[0, 0] = 1000
 
-        benchmark_portval = compute_portvals(orders=df_benchmark, start_val=sv, commission=9.95, impact=0.005)
+        benchmark_portval = marketsimcode.compute_portvals(orders=df_benchmark, start_val=sv, commission=9.95, impact=0.005)
         #benchmark_normed = benchmark_portval / benchmark_portval['Cash'][0]
 
         return benchmark_portval
@@ -83,9 +105,10 @@ def stats(manual, benchmark):
     print("Cumulative return: {:6f}".format(benchmark_cr))
     print("Mean of daily returns: {:6f}".format(benchmark_mean))
     print("Stdev of daily returns: {:6f}".format(benchmark_stdev))
+    print("")
 
 
-def chart(trades, manual, benchmark):
+def chart(trades, manual, benchmark, chart_name):
     long = []
     short = []
     current = 0
@@ -122,31 +145,16 @@ def chart(trades, manual, benchmark):
             plt.axvline(date, color = "blue")
 
     plt.legend()
-    #plt.savefig("manual.png")
-    plt.show()
+    plt.savefig("{} manual.png".format(chart_name))
     plt.clf()
 
-def report():
-    # In Sample
+def report(sd, ed, chart_name):
     ms = ManualStrategy()
-    is_trades = ms.testPolicy()
-
-    is_manual_portvals = compute_portvals(is_trades)
-    is_benchmark = ms.benchmark()
+    is_trades = ms.testPolicy(sd=sd, ed=ed)
+    is_manual_portvals = marketsimcode.compute_portvals(is_trades)
+    is_benchmark = ms.benchmark(sd=sd, ed=ed)
     stats(is_manual_portvals, is_benchmark)
-    chart(is_trades, is_manual_portvals, is_benchmark)
+    chart(is_trades, is_manual_portvals, is_benchmark, chart_name)
 
-    # Out of Sample
-    os_trades = ms.testPolicy(sd=dt.datetime(2010, 1, 1),
-                           ed=dt.datetime(2011, 12, 31))
-    os_manual_portvals = compute_portvals(os_trades)
-    os_benchmark=ms.benchmark(sd=dt.datetime(2010, 1, 1),
-                           ed=dt.datetime(2011, 12, 31))
-    stats(os_manual_portvals, os_benchmark)
-    chart(os_trades, os_manual_portvals, os_benchmark)
-
-
-if __name__ == "__main__":
-    report()
 
 

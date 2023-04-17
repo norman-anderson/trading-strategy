@@ -29,19 +29,19 @@ GT ID: 903863313
 
 import datetime as dt
 import random
-
 import pandas as pd
-import util as ut
+from util import get_data
+from QLearner import QLearner
+import indicators
 
-from RTLearner import RTLearner
-from BagLearner import BagLearner
-from indicators import sma, ema, macd, bollinger_band_percentage, rate_of_change
+
+def author():
+    return "nanderson83"
 
 
 class StrategyLearner(object):
     """
     A strategy learner that can learn a trading policy using the same indicators used in ManualStrategy.
-
     :param verbose: If “verbose” is True, your code can print out information for debugging.
         If verbose = False your code should not generate ANY output.
     :type verbose: bool
@@ -52,29 +52,29 @@ class StrategyLearner(object):
     """
     # constructor
     def __init__(self, verbose=False, impact=0.0, commission=0.0):
-        """
-        Constructor method
-        """
         self.verbose = verbose
         self.impact = impact
         self.commission = commission
 
-        self.learner = BagLearner(learner=RTLearner, kwargs={'leaf_size': 5},
-                                  bags=20)
-        random.seed(903863313)
-        self.lookback = 14
+        self.learner = QLearner(num_states=1000,
+                                num_actions=3,
+                                alpha=0.2,
+                                gamma=0.9,
+                                rar=0.9,
+                                radr=0.99,
+                                dyna=0,
+                                verbose=False)
+        random.seed(5000000)
 
-    # this method should create a QLearner, and train it for trading
     def add_evidence(
-        self,
-        symbol="IBM",
-        sd=dt.datetime(2008, 1, 1),
-        ed=dt.datetime(2009, 1, 1),
-        sv=10000,
+            self,
+            symbol="IBM",
+            sd=dt.datetime(2008, 1, 1),
+            ed=dt.datetime(2009, 1, 1),
+            sv=10000,
     ):
         """
         Trains your strategy learner over a given time frame.
-
         :param symbol: The stock symbol to train on
         :type symbol: str
         :param sd: A datetime object that represents the start date, defaults to 1/1/2008
@@ -84,58 +84,55 @@ class StrategyLearner(object):
         :param sv: The starting value of the portfolio
         :type sv: int
         """
-
         # add your code to do learning here
 
-        # example usage of the old backward compatible util function
-        syms = [symbol]
-        dates = pd.date_range(sd, ed)
-        prices_all = ut.get_data(syms, dates)  # automatically adds SPY
-        prices = prices_all[syms]  # only portfolio symbols
+        ema_20, ema_50, macd, roc = get_discretized(sd, ed, symbol)
 
-        if self.verbose:
-            print(prices)
+        prices = get_prices(sd, ed, symbol)
+        portfolio = pd.DataFrame(index=prices.index, columns=[symbol])
+        portfolio[:] = 0
+        date = prices.index
 
-        # example use with new colname
-        volume_all = ut.get_data(
-            syms, dates, colname="Volume"
-        )  # automatically adds SPY
-        volume = volume_all[syms]  # only portfolio symbols
-        volume_SPY = volume_all["SPY"]  # only SPY, for comparison later
-        if self.verbose:
-            print(volume)
+        current_position = prev_position = 0
+        current_cash = prev_cash = sv
 
-        s, m, r = sma(prices), macd(prices, symbol), rate_of_change(prices, symbol)
-        ind = pd.concat((s, m, r), axis=1)
-        x_train = ind.values
-        y_train = (prices.shift(-self.lookback) / prices) - 1
-        y_train[y_train > 0] = prices.shift(-self.lookback) / (prices * (1.0 + 2 * self.impact)) - 1.0
-        y_train[y_train < 0] = prices.shift(-self.lookback) / (prices * (1.0 - 2 * self.impact)) - 1.0
-        y_train = y_train.values
+        for i in range(portfolio.shape[0] - 1):
+            s_prime = get_s_prime(current_position, ema_20.loc[date[i]],
+                                  ema_50.loc[date[i]], macd.loc[date[i]],
+                                  roc.loc[date[i]])
 
-        buy, sell = 0.05, -0.05
-        for i in range(len(y_train)):
-            if y_train[i] > 1.08 + self.impact:
-                y_train[i] = 1
-            elif y_train[i] < 0.92 - self.impact:
-                y_train[i] = -1
+            reward = current_position * prices.loc[date[i], symbol] + current_cash - prev_position * prices.loc[date[i], symbol] - prev_cash
+
+            vote = self.learner.query(s_prime, reward)
+            if vote == 0:
+                action = -1000 - current_position
+            elif vote == 1:
+                action = -current_position
             else:
-                y_train[i] = 0
+                action = 1000 - current_position
 
-        self.learner.add_evidence(x_train, y_train)
+            prev_position = current_position
+            current_position += action
+            portfolio.iloc[i, 0] = action
 
+            if action > 0:
+                impact = self.impact
+            else:
+                impact = -self.impact
+
+            prev_cash = current_cash
+            current_cash += -prices.loc[date[i], symbol] * action * (1 + impact)
 
     # this method should use the existing policy and test it against new data
     def testPolicy(
-        self,
-        symbol="IBM",
-        sd=dt.datetime(2009, 1, 1),
-        ed=dt.datetime(2010, 1, 1),
-        sv=10000,
+            self,
+            symbol="IBM",
+            sd=dt.datetime(2009, 1, 1),
+            ed=dt.datetime(2010, 1, 1),
+            sv=10000,
     ):
         """
         Tests your learner using data outside of the training data
-
         :param symbol: The stock symbol that you trained on on
         :type symbol: str
         :param sd: A datetime object that represents the start date, defaults to 1/1/2008
@@ -150,30 +147,65 @@ class StrategyLearner(object):
             long so long as net holdings are constrained to -1000, 0, and 1000.
         :rtype: pandas.DataFrame
         """
+        ema_20, ema_50, macd, roc = get_discretized(sd, ed, symbol)
 
-        # your code should return the same sort of data
-        syms = [symbol]
-        dates = pd.date_range(sd, ed)
-        prices_all = ut.get_data(syms, dates)  # automatically adds SPY
-        prices = prices_all[syms]  # only portfolio symbols
+        prices = get_prices(sd, ed, symbol)
+        portfolio = pd.DataFrame(index=prices.index, columns=[symbol])
+        portfolio[:] = 0
+        date = prices.index
+        current_position = 0
 
-        s, m, r = sma(prices), macd(prices, symbol), rate_of_change(prices, symbol)
-        ind = pd.concat((s, m, r), axis=1)
-        x_test = ind.values
-        y_test = self.learner.query(x_test)
-        trades = pd.DataFrame(0, columns=prices.columns, index=prices.index)
-        shares = 0
-        for i in range(len(trades)):
-            if y_test[i] == 1:
-                trades[symbol].iloc[i] = 1000 - shares
-                shares = 1000
-            elif y_test[i] == -1:
-                trades[symbol].iloc[i] = - shares - 1000
-                shares = -1000
+        # train the learner
+        for i in range(portfolio.shape[0] - 1):
+            s_prime = get_s_prime(current_position, ema_20.loc[date[i]],
+                                  ema_50.loc[date[i]], macd.loc[date[i]],
+                                  roc.loc[date[i]])
 
-        return trades
+            vote = self.learner.querysetstate(s_prime)
+            if vote == 0:
+                action = -1000 - current_position
+            elif vote == 1:
+                action = -current_position
+            else:
+                action = 1000 - current_position
 
-if __name__ == "__main__":
-    #print("One does not simply think up a strategy")
-    sl = StrategyLearner()
-    sl.add_evidence()
+            current_position += action
+            portfolio.iloc[i, 0] = action
+
+        return portfolio
+
+
+""" Helper Methods """
+
+def get_prices(sd, ed, symbol):
+    syms=[symbol]
+    dates = pd.date_range(sd, ed)
+    df = get_data(syms, dates)
+    prices = df[syms]
+    prices = prices.ffill().bfill()
+    spy = df[['SPY']]
+    return prices
+
+
+def get_discretized(sd, ed, symbol):
+    prices = get_prices(sd, ed, symbol)
+
+    ema_20 = indicators.ema(sd, ed, symbol)
+    ema_50 = indicators.ema(sd, ed, symbol, window_size=50)
+
+    ema_20 = (prices > ema_20) * 1
+    ema_50 = (prices > ema_50) * 1
+
+    macd, macd_signal = indicators.macd(sd, ed, symbol)
+    macd = (macd > macd_signal) * 1
+
+    roc = indicators.roc(sd, ed, symbol)
+    roc = (roc > 0) * 1
+
+    return ema_20, ema_50, macd, roc
+
+
+def get_s_prime(current_position, ema_20, ema_50, macd, roc):
+    state = 16 if current_position == 0 else 32
+    state += ema_20 * 8 + ema_50 * 4 + macd * 2 + roc
+    return int(state)

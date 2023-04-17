@@ -3,9 +3,6 @@ Student Name: Norman Anderson
 GT User ID: nanderson83
 GT ID: 903863313
 """
-
-import datetime as dt
-import numpy as np
 import pandas as pd
 from util import get_data, plot_data
 
